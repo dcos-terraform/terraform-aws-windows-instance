@@ -1,97 +1,71 @@
-variable "region" {
-  description = "region"
+variable "vpc_id" {
+  description = "VPC id for new agents"
   default     = ""
+}
+
+variable "subnet_id" {
+  type = "list"
+  description = "Subnet for new agent"
+}
+
+variable "admin_ips" {
+  type = "list"
+  description = "List of admin IP adresses"
+}
+
+variable "num_winagent" {
+  description = "Number of windows agents"
+  default = "0"
 }
 
 variable "cluster_name" {
-  description = "Name of the DC/OS cluster"
+  description = "Name of cluster where we will connecting new agnets"
+  default = ""
 }
 
-# variable "availability_zones" {
-#  description = "Specify the availability zones to be used"
-#  type = "list"
-# }
-
-variable "tags" {
-  description = "Add custom tags to all resources"
-  type        = "map"
-  default     = {}
+variable "expiration" {
+  description = "Time to live the agents"
+  default = "24h"
 }
 
-variable "ami" {
-  description = "AMI that will be used for the instance"
+variable "owner" {
+  description = "Who owned the agents"
+  default = ""
 }
 
-variable "num" {
-  description = "How many instances should be created"
+variable "aws_key_name" {
+  description = "ssh key for access to EC2 servers"
+  default = ""
 }
 
-variable "instance_type" {
-  description = "Instance Type"
-  default     = "m4.large"
+variable "security_group_admin" {
+  description = "List of security groups"
+  default = ""
 }
 
-variable "root_volume_size" {
-  description = "Specify the root volume size"
-  default     = "40"
+variable "security_group_internal" {
+  description = "List of security groups"
+  default = ""
 }
 
-variable "root_volume_type" {
-  description = "Specify the root volume type. Masters MUST have at least gp2"
-  default     = "gp2"
+variable "bootstrap_public_ip" {
+  description = "Parameters of bootstrap node"
 }
 
-variable "extra_volumes" {
-  description = "Extra volumes for each instance"
-  default     = []
+variable "bootstrap_private_ip" {
+  description = "Parameters of bootstrap node"
 }
 
-variable "subnet_ids" {
-  description = "List of subnet IDs created in this network"
-  type        = "list"
+variable "bootstrap_os_user" {
+  description = "Parameters of bootstrap node"
 }
 
-variable "security_group_ids" {
-  description = "Firewall IDs to use for these instances"
-  type        = "list"
+variable "ssh_private_key_file" {
+  description = "Private ssh key"
+  default = ""
 }
 
-variable "iam_instance_profile" {
-  description = "The instance profile to be used for these instances"
-  default     = ""
-}
-
-variable "associate_public_ip_address" {
-  description = "Associate a public IP address with the instances"
-  default     = true
-}
-
-variable "user_data" {
-  description = "User data to be used on these instances (cloud-init)"
-  default     = ""
-}
-
-variable "dcos_instance_os" {
-  description = "Operating system to use. Instead of using your own AMI you could use a provided OS."
-  default     = "centos_7.4"
-}
-
-// TODO: Maybe use a list instead and provision keys through cloudinit
-variable "key_name" {
-  description = "The SSH key to use for these instances."
-}
-
-variable "hostname_format" {
-  description = "Format the hostname inputs are index+1, region, cluster_name"
-  default     = "%[3]s-instance%[1]d-%[2]s"
-}
-
-variable "name_prefix" {
-  description = "Name Prefix"
-  default     = ""
-}
-
-variable "extra_volume_name_format" {
-  description = "Printf style format for naming the extra volumes. Inputs are cluster_name and instance ID."
-  default     = "extra-volumes-%s-%s"
+variable "masters_private_ips" {
+  type = "list"
+  description = ""
 }

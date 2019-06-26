@@ -1,136 +1,179 @@
-/**
- * :bangbang: THIS IS AN ALPHA MODULE DO NOT USE IN PRODUCTION :bangbang:
- * ======================================================================
- *
- * AWS Windows Instance
- * ============
- * This is an module to creates a DC/OS Windows AWS Instances.
- *
- * If `ami` variable is not set. This module uses the latest AWS Windows AMI.
- *
- * Using you own AMI *FIXME*
- * -----------------
- * If you choose to use your own AMI please make sure the DC/OS related
- * prerequisites are met. Take a look at https://docs.mesosphere.com/1.11/installing/ent/custom/system-requirements/install-docker-RHEL/
- *
- * EXAMPLE
- * -------
- *
- *```hcl
- * module "dcos-master-instance" {
- *   source  = "terraform-dcos/windows-instance/aws"
- *   version = "~> 0.2.0"
- *
- *   cluster_name = "production"
- *   subnet_ids = ["subnet-12345678"]
- *   security_group_ids = ["sg-12345678"]
- *   hostname_format = "%[3]s-master%[1]d-%[2]s"
- *   ami = "ami-12345678"
- *
- *   extra_volumes = [
- *     {
- *       size        = "100"
- *       type        = "gp2"
- *       iops        = "3000"
- *       device_name = "/dev/xvdi"
- *     },
- *     {
- *       size        = "1000"
- *       type        = ""     # Use AWS default.
- *       iops        = "0"    # Use AWS default.
- *       device_name = "/dev/xvdj"
- *     }
- *   ]
- * }
- *```
- */
+# :bangbang: THIS IS AN ALPHA MODULE DO NOT USE IN PRODUCTION :bangbang:
+# ======================================================================
 
-provider "aws" {}
+# AWS Windows Instance
+# ============
+# This is an module to creates a DC/OS Windows AWS Instances.
 
-// If name_prefix exists, merge it into the cluster_name
-locals {
-  cluster_name = "${var.name_prefix != "" ? "${var.name_prefix}-${var.cluster_name}" : var.cluster_name}"
+# f `ami` variable is not set. This module uses the latest AWS Windows AMI.
 
-  # NOTE: This is to workaround the divide by zero warning from Terraform.
-  num_extra_volumes = "${length(var.extra_volumes) > 0 ? length(var.extra_volumes) : 1}"
+# Using you own AMI *FIXME*
+# -----------------
+# If you choose to use your own AMI please make sure the DC/OS related
+# prerequisites are met. Take a look at https://docs.mesosphere.com/1.11/installing/ent/custom/system-requirements/install-docker-RHEL/
 
-  # NOTE: This is to make "lookup" happy. Otherwise, it will complain
-  # about the type cannot be derived if "var.extra_volumes" is not
-  # set.
-  extra_volumes = "${concat(var.extra_volumes, list(map("dummy", "dummy")))}"
-}
+# EXAMPLE
+# -------
 
-module "dcos-tested-oses" {
-  source  = "dcos-terraform/tested-oses/aws"
-  version = "~> 0.2.0"
+# ```hcl
+# module "windows-agent" {
+#   source = "git::https://github.com/alekspv/terraform-aws-windows-instance.git?ref=features/windows-agent"
+#   num_winagent            = "2"
+#   admin_ips               = ["198.51.100.0/24"]
+#   vpc_id                  = "vpc-123456789"
+#   subnet_id               = "subnet-123456789"
+#   cluster_name            = "development"
+#   expiration              = "24h"
+#   owner                   = "John Dou"
+#   aws_key_name            = "${module.dcos.infrastructure.aws_key_name}"
+#   security_group_admin    = "${module.dcos.infrastructure.security_groups.admin}"
+#   security_group_internal = "${module.dcos.infrastructure.security_groups.internal}"
+#   bootstrap_private_ip    = "${module.dcos.infrastructure.bootstrap.private_ip}"
+#   bootstrap_public_ip     = "${module.dcos.infrastructure.bootstrap.public_ip}"
+#   bootstrap_os_user       = "${module.dcos.infrastructure.bootstrap.os_user}"
+#   ssh_private_key_file    = "~/.ssh/id_rsa"
+#   masters_private_ips     = "${module.dcos.infrastructure.masters.private_ips}"
+# }
 
-  providers = {
-    aws = "aws"
+# ```
+
+
+data "aws_ami" "winAmi" {
+ owners                               = ["amazon"]
+  filter{
+    name                              = "name"
+    values                            = ["Windows_Server-1809-English-Core-ContainersLatest-2019.05.15"]
   }
-
-  os = "${var.dcos_instance_os}"
 }
 
-resource "aws_instance" "instance" {
-  instance_type = "${var.instance_type}"
-  ami           = "${coalesce(var.ami, module.dcos-tested-oses.aws_ami)}"
+resource "aws_security_group" "rdp" {
+  description                         = "Allow incoming rdp traffic from admin_ips"
+  vpc_id                              = "${var.vpc_id}"
 
-  count                       = "${var.num}"
-  key_name                    = "${var.key_name}"
-  vpc_security_group_ids      = ["${var.security_group_ids}"]
-  associate_public_ip_address = "${var.associate_public_ip_address}"
-  iam_instance_profile        = "${var.iam_instance_profile}"
+      tags = {
+        Name                          = "allow_rdp"
+      }
+      ingress {
+        from_port                     = 3389
+        to_port                       = 3389
+        protocol                      = "tcp"
+      cidr_blocks                     = ["${var.admin_ips}"]
+            }
+      ingress {
+        from_port                     = 3389
+        to_port                       = 3389
+        protocol                      = "udp"
+      cidr_blocks                     = ["${var.admin_ips}"]
+            }
+      ingress {
+        from_port                     = 0
+        to_port                       = 65535
+        protocol                      = "tcp"
+      cidr_blocks                     = ["0.0.0.0/0"]
+            }
+    }
 
-  # availability_zone = "${element(var.availability_zones, count.index % length(var.availability_zones)}"
-  subnet_id = "${element(var.subnet_ids, count.index % length(var.subnet_ids))}"
-
-  tags = "${merge(var.tags, map("Name", format(var.hostname_format, (count.index + 1), var.region, local.cluster_name),
-                                "Cluster", var.cluster_name,
-                                "KubernetesCluster", var.cluster_name))}"
-
+resource "aws_instance" "mesos-agent-windows" {
+  count                               = "${var.num_winagent}"
+  ami                                 = "${data.aws_ami.winAmi.id}"
+  instance_type                       = "t3.xlarge"
+  get_password_data                   = "true"
   root_block_device {
-    volume_size           = "${var.root_volume_size}"
-    volume_type           = "${var.root_volume_type}"
-    delete_on_termination = true
+    volume_type                       = "gp2"
+    volume_size                       = 230
+    }
+  tags = {
+    Name                              = "${var.cluster_name}-winagent-${count.index}"
+    expiration                        = "${var.expiration}"
+    owner                             = "${var.owner}"
+  }
+  key_name                            = "${var.aws_key_name}"
+  subnet_id                           = "${element(var.subnet_id,0)}"
+  security_groups                     = ["${list(
+      var.security_group_internal,
+      var.security_group_admin,
+      aws_security_group.rdp.id)}"]
+
+  user_data                           = <<-EOF
+  <script>
+    winrm quickconfig -q & winrm set winrm/config @{MaxTimeoutms="1800000"} & winrm set winrm/config/service @{AllowUnencrypted="true"} & winrm set winrm/config/service/auth @{Basic="true"}
+  </script>
+  <powershell>
+  New-SelfSignedCertificate -DnsName $(Invoke-RestMethod -uri http://169.254.169.254/latest/meta-data/local-hostname) -CertStoreLocation Cert:\LocalMachine\My 
+  New-Item WSMan:\localhost\Listener -Address * -Transport HTTPS -HostName $(Invoke-RestMethod -uri http://169.254.169.254/latest/meta-data/local-hostname) -CertificateThumbPrint $(ls Cert:\LocalMachine\My).Thumbprint -Force
+  Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
+  Set-MpPreference -DisableRealtimeMonitoring $true
+
+  </powershell>
+                    EOF
+}
+
+resource "null_resource" "run_ansible_from_bootstrap_node_to_install_dcos" {
+    triggers {
+    bootstrap_instance               = "${var.bootstrap_public_ip}"
+
+    bootstrap_ip                     = "${var.bootstrap_private_ip}"
+    master_instances                 = "${join(",", var.masters_private_ips)}"
+    private_agents_instances         = "${join(",", aws_instance.mesos-agent-windows.*.private_ip)}"
   }
 
-  user_data = "${var.user_data}"
+  connection {
+    host                             = "${var.bootstrap_public_ip}"
+    user                             = "${var.bootstrap_os_user}"
+}
 
-  lifecycle {
-    ignore_changes = ["user_data", "ami"]
+  provisioner "file" {
+    destination                      = "/tmp/win_inventory"
+    content                          = <<EOF
+    ansible_python_interpreter=/usr/bin/python
+    [bootstraps]
+    [masters]
+    ${join("\n",var.masters_private_ips) }
+    [agents_private]
+    [agents_public]
+    [win_agents]
+    ${join("\n",null_resource.pass.*.triggers.var.adm) }
+    [win_agents:vars]
+    ansible_user=Administrator
+    ansible_connection=winrm
+    ansible_winrm_server_cert_validation=ignore
+    dcos_version="1.13"
+    [agents:children]
+    agents_private
+    agents_public
+    [dcos:children]
+    bootstraps
+    masters
+    agents
+    agents_public
+    [linux:children]
+    bootstraps
+    masters
+    agents_public
+    agents_private
+    [windows:children]
+    win_agents
+    EOF
   }
+
+  provisioner "file" {
+    source                           = "${path.module}/files/"
+    destination                      = "/tmp"
+  }
+
+
+  provisioner "remote-exec" {
+    inline                         = [
+      "rm -rf /tmp/dcos-ansible ; sudo yum install git -y && cd /tmp && git clone -b feature/windows-agent-support https://github.com/alekspv/dcos-ansible && cd /tmp/dcos-ansible && sudo docker build -t dcos-ansible-bundle-win . && sudo docker run -it -v /tmp/win_inventory:/inventory -v /tmp/ansible.cfg:/ansible.cfg  dcos-ansible-bundle-win ansible-playbook -i inventory  -l win_agents dcos_playbook.yml"
+    ]
+  }
+
 }
 
-resource "aws_ebs_volume" "volume" {
-  # We group volumes from one instance first. For instance:
-  # - length(var.extra_volumes) = 2 (volumes)
-  # - var.num = 3 (instances)
-  #
-  # We will get:
-  # - volume.0 (instance 0)
-  # - volume.1 (instance 0)
-  # - volume.2 (instance 1)
-  # - volume.3 (instance 1)
-  # - volume.4 (instance 2)
-  # - volume.5 (instance 2)
-  count = "${var.num * length(var.extra_volumes)}"
-
-  availability_zone = "${element(aws_instance.instance.*.availability_zone, count.index / local.num_extra_volumes)}"
-  size              = "${lookup(local.extra_volumes[count.index % local.num_extra_volumes], "size", "120")}"
-  type              = "${lookup(local.extra_volumes[count.index % local.num_extra_volumes], "type", "")}"
-  iops              = "${lookup(local.extra_volumes[count.index % local.num_extra_volumes], "iops", "0")}"
-
-  tags = "${merge(var.tags, map(
-                "Name", format(var.extra_volume_name_format,
-                               var.cluster_name,
-                               element(aws_instance.instance.*.id, count.index / local.num_extra_volumes)),
-                "Cluster", var.cluster_name))}"
+resource "null_resource" "pass" {
+  count                              = "${var.num_winagent}"
+  triggers                           = {
+var.adm = "${aws_instance.mesos-agent-windows.*.private_ip[count.index]}   pass=${rsadecrypt(aws_instance.mesos-agent-windows.*.password_data[count.index], file("${var.ssh_private_key_file}"))}"
+}
 }
 
-resource "aws_volume_attachment" "volume-attachment" {
-  count        = "${var.num * length(var.extra_volumes)}"
-  device_name  = "${lookup(local.extra_volumes[count.index % local.num_extra_volumes], "device_name", "dummy")}"
-  volume_id    = "${element(aws_ebs_volume.volume.*.id, count.index)}"
-  instance_id  = "${element(aws_instance.instance.*.id, count.index / local.num_extra_volumes)}"
-  force_detach = true
-}

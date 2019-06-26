@@ -16,31 +16,25 @@ EXAMPLE
 -------
 
 ```hcl
-module "dcos-master-instance" {
-  source  = "terraform-dcos/windows-instance/aws"
-  version = "~> 0.2.0"
-
-  cluster_name = "production"
-  subnet_ids = ["subnet-12345678"]
-  security_group_ids = ["sg-12345678"]
-  hostname_format = "%[3]s-master%[1]d-%[2]s"
-  ami = "ami-12345678"
-
-  extra_volumes = [
-    {
-      size        = "100"
-      type        = "gp2"
-      iops        = "3000"
-      device_name = "/dev/xvdi"
-    },
-    {
-      size        = "1000"
-      type        = ""     # Use AWS default.
-      iops        = "0"    # Use AWS default.
-      device_name = "/dev/xvdj"
-    }
-  ]
+module "windows-agent" {
+  source = "git::https://github.com/alekspv/terraform-aws-windows-instance.git?ref=features/windows-agent"
+  num_winagent            = "2"
+  admin_ips               = ["198.51.100.0/24"]
+  vpc_id                  = "vpc-123456789"
+  subnet_id               = "subnet-123456789"
+  cluster_name            = "development"
+  expiration              = "24h"
+  owner                   = "John Dou"
+  aws_key_name            = "${module.dcos.infrastructure.aws_key_name}"
+  security_group_admin    = "${module.dcos.infrastructure.security_groups.admin}"
+  security_group_internal = "${module.dcos.infrastructure.security_groups.internal}"
+  bootstrap_private_ip    = "${module.dcos.infrastructure.bootstrap.private_ip}"
+  bootstrap_public_ip     = "${module.dcos.infrastructure.bootstrap.public_ip}"
+  bootstrap_os_user       = "${module.dcos.infrastructure.bootstrap.os_user}"
+  ssh_private_key_file    = "~/.ssh/id_rsa"
+  masters_private_ips     = "${module.dcos.infrastructure.masters.private_ips}"
 }
+
 ```
 
 ## Inputs
@@ -48,32 +42,28 @@ module "dcos-master-instance" {
 | Name | Description | Type | Default | Required |
 |------|-------------|:----:|:-----:|:-----:|
 | ami | AMI that will be used for the instance | string | n/a | yes |
-| cluster\_name | Name of the DC/OS cluster | string | n/a | yes |
-| key\_name | The SSH key to use for these instances. | string | n/a | yes |
-| num | How many instances should be created | string | n/a | yes |
-| security\_group\_ids | Firewall IDs to use for these instances | list | n/a | yes |
-| subnet\_ids | List of subnet IDs created in this network | list | n/a | yes |
-| associate\_public\_ip\_address | Associate a public IP address with the instances | string | `"true"` | no |
-| dcos\_instance\_os | Operating system to use. Instead of using your own AMI you could use a provided OS. | string | `"centos_7.4"` | no |
-| extra\_volume\_name\_format | Printf style format for naming the extra volumes. Inputs are cluster_name and instance ID. | string | `"extra-volumes-%s-%s"` | no |
-| extra\_volumes | Extra volumes for each instance | list | `<list>` | no |
-| hostname\_format | Format the hostname inputs are index+1, region, cluster_name | string | `"%[3]s-instance%[1]d-%[2]s"` | no |
-| iam\_instance\_profile | The instance profile to be used for these instances | string | `""` | no |
-| instance\_type | Instance Type | string | `"m4.large"` | no |
-| name\_prefix | Name Prefix | string | `""` | no |
-| region | region | string | `""` | no |
-| root\_volume\_size | Specify the root volume size | string | `"40"` | no |
-| root\_volume\_type | Specify the root volume type. Masters MUST have at least gp2 | string | `"gp2"` | no |
-| tags | Add custom tags to all resources | map | `<map>` | no |
-| user\_data | User data to be used on these instances (cloud-init) | string | `""` | no |
+| source | Path to module| string | n/a| yes |
+| num_winagent | Number of windows agents | integer | 0 | yes |
+| admin_ips | List of IP address  | list | n/a | yes |
+| vpc_id | ID of VPC where agents will be created | string | n/a | yes |
+| subnet_id | ID of subnet where agents will be created | string | n/a | yes |
+| cluster_name | Name of cluster where agents will be created | string | n/a | yes |
+| expiration | Time to live the agents | string | n/a | no |
+| owner | Who owned the cluster | string | n/a | no |
+| aws_key_name | Name of AWS key which to be added to EC2 instance for access | string | n/a | yes |
+| security_group_admin | ID of admin security group | string | n/a | yes? |
+| security_group_internal | ID of internal security group | string | n/a | yes? |
+| bootstrap_private_ip | Privat IP address of bootstrap node | string | n/a | yes |
+| bootstrap_public_ip | Public IP address of bootstrap node | string | n/a | yes |
+| bootstrap_os_user | User for connecting by ssh to the bootstrap node | string | n/a | yes |
+| ssh_private_key_file | Path to ssh key file | string | n/a | yes |
+| masters_private_ips | IP address of master node | string | n/a | yes |
 
 ## Outputs
 
 | Name | Description |
 |------|-------------|
 | instances | List of instance IDs |
-| os\_user | The OS user to be used |
-| prereq-id | Returns the ID of the prereq script (if user_data or ami are not used) |
 | private\_ips | List of private ip addresses created by this module |
 | public\_ips | List of public ip addresses created by this module |
 
