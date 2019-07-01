@@ -38,26 +38,21 @@ variable "aws_key_name" {
   default = ""
 }
 
-variable "security_group_admin" {
+variable "security_groups" {
   description = "List of security groups"
-  default = ""
-}
-
-variable "security_group_internal" {
-  description = "List of security groups"
-  default = ""
+  type = "list"
 }
 
 variable "bootstrap_public_ip" {
-  description = "Parameters of bootstrap node"
+  description = "Parameter of bootstrap node"
 }
 
 variable "bootstrap_private_ip" {
-  description = "Parameters of bootstrap node"
+  description = "Parameter of bootstrap node"
 }
 
 variable "bootstrap_os_user" {
-  description = "Parameters of bootstrap node"
+  description = "Parameter of bootstrap node"
 }
 
 variable "ssh_private_key_file" {
@@ -67,5 +62,55 @@ variable "ssh_private_key_file" {
 
 variable "masters_private_ips" {
   type = "list"
-  description = ""
+  description = "List privat IP addresses of master nodes"
+}
+
+variable "rdp_port" {
+  description = "Port for connection by RDP"
+  default = 3389
+}
+
+variable "agent_instance_type" {
+  description = "Type of instance"
+  default = "t3.xlarge"
+}
+
+variable "get_password_data" {
+  default = "true"
+}
+
+variable "agent_volume_type" {
+  description = "Volume type for agent nodes"
+  default = "gp2"
+}
+
+variable "agent_volume_size" {
+  description = "Volume size for agent nodes"
+  default = 230
+}
+
+variable "user_data" {
+  description = "User data"
+  default = <<-EOF
+  <script>
+    winrm quickconfig -q & winrm set winrm/config @{MaxTimeoutms="1800000"} & winrm set winrm/config/service @{AllowUnencrypted="true"} & winrm set winrm/config/service/auth @{Basic="true"}
+  </script>
+  <powershell>
+  New-SelfSignedCertificate -DnsName $(Invoke-RestMethod -uri http://169.254.169.254/latest/meta-data/local-hostname) -CertStoreLocation Cert:\LocalMachine\My
+  New-Item WSMan:\localhost\Listener -Address * -Transport HTTPS -HostName $(Invoke-RestMethod -uri http://169.254.169.254/latest/meta-data/local-hostname) -CertificateThumbPrint $(ls Cert:\LocalMachine\My).Thumbprint -Force
+  Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
+  Set-MpPreference -DisableRealtimeMonitoring $true
+
+  </powershell>
+  EOF
+}
+
+variable "remote-exec-inline" {
+  description = "Commad wich executed by bootstrap node for windows agents"
+  default = "rm -rf /tmp/dcos-ansible ; sudo yum install git -y && cd /tmp && git clone -b feature/windows https://github.com/alekspv/dcos-ansible && cd /tmp/dcos-ansible && sudo docker build -t dcos-ansible-bundle-win . && sudo docker run -it -v /tmp/win_inventory:/inventory -v /tmp/ansible.cfg:/ansible.cfg -v dcos.yml:/dcos-playbook.yml -v /tmp/mesosphere_universal_installer_dcos.yml:/dcos.yml dcos-ansible-bundle-win ansible-playbook -i inventory -l agents_windows dcos_playbook.yml -e @/dcos.yml"
+}
+
+
+locals {
+  agent_security_groups = ["${var.security_groups}", "${aws_security_group.rdp.id}"]
 }
